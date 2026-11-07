@@ -122,14 +122,37 @@ header{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
 @keyframes gallop{to{transform:rotate(14deg)}}
 @keyframes blink{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.sleigh,.santa,.leg,.lights i{animation:none}.sleigh{transform:translateX(10%)}}
-@media (prefers-reduced-motion:reduce){#snow{display:none}}
+
+/* Interacción */
+.santa{cursor:pointer}
+.reno{cursor:pointer}
+.reno.jump{animation:jump .6s ease}
+@keyframes jump{30%{transform:translateY(-26px) rotate(-6deg)}60%{transform:translateY(0) rotate(8deg)}}
+.toast{position:fixed;right:16px;bottom:16px;z-index:4;display:flex;align-items:flex-end;gap:8px;max-width:min(340px,calc(100% - 32px));
+  transform:translateY(140%);opacity:0;transition:transform .35s cubic-bezier(.2,1.4,.4,1),opacity .25s}
+.toast.show{transform:none;opacity:1}
+.toast svg{width:58px;flex:none;filter:drop-shadow(0 4px 8px rgba(0,0,0,.4))}
+.toast p{margin:0;background:var(--paper);color:var(--ink);border-radius:16px 16px 4px 16px;padding:10px 14px;font-weight:600;font-size:.95rem;box-shadow:0 8px 20px rgba(0,0,0,.35);order:-1}
+.meter{display:grid;gap:6px}
+.meter-top{display:flex;justify-content:space-between;gap:10px;font-weight:700;font-size:.9rem}
+.meter-top b{color:var(--gold)}
+.meter-bar{height:14px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--line);overflow:hidden}
+.meter-bar i{display:block;height:100%;width:0;border-radius:999px;transition:width .5s ease;
+  background:repeating-linear-gradient(-45deg,var(--berry) 0 10px,#fff 10px 18px)}
+.wish .tag.lujo{color:#ffd88a}
+.confeti{position:fixed;top:-20px;z-index:6;pointer-events:none;width:10px;height:14px;border-radius:2px;animation:caer linear forwards}
+@keyframes caer{to{transform:translateY(110vh) rotate(720deg)}}
+.sleigh.rush{animation:rush 2.2s ease-in forwards}
+@keyframes rush{from{transform:translate(-110%,30px)}to{transform:translate(260%,-40px)}}
+.dialog .santa-mini{width:64px;justify-self:start}
+@media (prefers-reduced-motion:reduce){#snow{display:none}.toast{transition:none}.confeti{display:none}}
 </style>
 </head>
 <body>
 <canvas id="snow" aria-hidden="true"></canvas>
 <div class="wrap">
   <header>
-    <svg class="santa" viewBox="0 0 200 220" aria-hidden="true">
+    <svg class="santa" id="santa" role="button" tabindex="0" aria-label="Toca a Papá Noel" viewBox="0 0 200 220" aria-hidden="true">
   <!-- gorro -->
   <path d="M40 92 C48 40 96 14 140 22 C168 28 182 50 186 78 L170 84 C164 62 150 50 134 52 C110 56 92 74 84 96 Z" fill="#c0263b"/>
   <circle cx="178" cy="92" r="16" fill="#fff"/>
@@ -235,6 +258,10 @@ header{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
         </label>
       </fieldset>
 
+      <div class="meter" aria-live="polite">
+        <div class="meter-top"><span>Espíritu navideño</span><b id="meterTxt">Modo Grinch</b></div>
+        <div class="meter-bar"><i id="meterBar"></i></div>
+      </div>
       <p class="err" id="err" role="alert"></p>
       <button class="btn btn-main" id="enviar" type="submit">Enviar mi carta ✉</button>
     </form>
@@ -246,7 +273,7 @@ header{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
         <div class="stamp" aria-hidden="true">Correo<br>del<br>Polo</div>
         <div class="hand" id="cartaBody"></div>
       </article>
-      <svg class="reno" viewBox="0 0 140 150" aria-hidden="true">
+      <svg class="reno" id="reno" viewBox="0 0 140 150" aria-hidden="true">
   <path d="M44 34 C30 20 30 6 36 0 M40 18 L26 14 M38 26 L24 30" stroke="#d9b98a" stroke-width="6" fill="none" stroke-linecap="round"/>
   <path d="M96 34 C110 20 110 6 104 0 M100 18 L114 14 M102 26 L116 30" stroke="#d9b98a" stroke-width="6" fill="none" stroke-linecap="round"/>
   <ellipse cx="32" cy="52" rx="16" ry="9" fill="#9a6a44" transform="rotate(-25 32 52)"/>
@@ -275,6 +302,7 @@ header{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
   <g><rect x="440" y="64" width="34" height="22" fill="#fbf6ea"/><rect x="453" y="64" width="8" height="22" fill="#2f6b4f"/></g>
   <path d="M500 86 L524 34 L548 86 Z" fill="#24543f"/><path d="M508 86 L524 50 L540 86Z" fill="#2f6b4f"/><path d="M518 30 l6 -10 l6 10 l-12 -6 h12 z" fill="#e3b04b"/>
 </svg>
+<div class="toast" id="toast" role="status" aria-live="polite"><p id="toastTxt"></p></div>
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovT">
   <div class="dialog">
     <h2 id="ovT">¡Carta lista!</h2>
@@ -286,7 +314,8 @@ header{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
 <script>
 /* ====== CONFIGURACIÓN ======
    Correo que recibe las cartas. */
-const CORREO_DESTINO = "dubianbueno@gmail.com";
+const FORM_ID = "b75886043a3f1c72caa6f4665f57e5a4"; // código de FormSubmit (reemplaza el correo)
+const COPIA_A = "alejuithaaaa3@gmail.com"; // segundo correo que recibe copia; varios separados por coma
 const ASUNTO = "Carta de Navidad";
 /* ============================ */
 
@@ -296,15 +325,106 @@ let wishes = []; // {name, top}
 
 function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
+
+/* ===== Papá Noel habla ===== */
+const norm = t => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+const pick = a => a[Math.floor(Math.random()*a.length)];
+let toastT;
+function santaDice(txt, ms=4500){
+  const t=$("toast"); $("toastTxt").textContent = txt;
+  if(!t.querySelector("svg")){ const c=$("santa").cloneNode(true); c.removeAttribute("id"); c.removeAttribute("tabindex"); c.removeAttribute("role"); c.setAttribute("aria-hidden","true"); c.style.animation="none"; t.appendChild(c); }
+  t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"), ms);
+}
+
+/* Regalos caros */
+const LUJO = [
+  {k:["carro","auto","automovil","camioneta","tesla","moto","motocicleta","lamborghini","ferrari"], m:"Mis renos no tienen pase de conducción… y un carro no cabe en el trineo."},
+  {k:["casa","apartamento","apto","finca","mansion","castillo"], m:"¿Una casa? ¡Eso no entra por la chimenea!"},
+  {k:["viaje","crucero","disney","europa","paris","japon","vacaciones"], m:"¿Un viaje? ¿Y quién se queda cuidando a los renos?"},
+  {k:["iphone","ipad","macbook","mac","airpods","apple watch","celular","telefono","smartphone","samsung"], m:"Uy, eso cuesta más que todas las galletas del Polo Norte."},
+  {k:["playstation","ps5","ps4","xbox","nintendo","switch","pc gamer","computador","portatil","laptop","tablet","televisor","tv","smart tv","drone","dron","camara"], m:"Los elfos tendrían que trabajar horas extra para armar eso."},
+  {k:["rolex","diamante","diamantes","oro","lingote","joyas","yate","avion","helicoptero","caballo","piscina","millon","millones","dolares","bitcoin"], m:"¡Jo, jo… jo! Eso ya es nivel jeque árabe."}
+];
+function esLujo(name){
+  const n=" "+norm(name).replace(/[^a-z0-9 ]/g," ")+" ";
+  for(const g of LUJO) for(const k of g.k) if(n.includes(" "+k+" ")) return g.m;
+  return null;
+}
+function pedirConfirmacion(name, msg){
+  const mini=$("santa").cloneNode(true); mini.removeAttribute("id"); mini.setAttribute("class","santa-mini"); mini.removeAttribute("tabindex"); mini.removeAttribute("role"); mini.setAttribute("aria-hidden","true");
+  abrir("Uy… ¿estás seguro?", `<p><b>${esc(name)}</b>… ${esc(msg)}</p><p>Recuerda que Papá Noel no es millonario. ¿Lo dejamos en la carta igual?</p>`,
+    [{t:"Sí, lo quiero igual", main:true, fn:()=>{ cerrar(); agregar(name,true); santaDice(pick(["Bueno, lo anoto… pero no prometo nada.","Anotado con letra pequeñita.","Le voy a preguntar a la Señora Noel si nos alcanza."])); }},
+     {t:"Mejor pido otra cosa", fn:()=>{ cerrar(); $("nuevo").focus(); santaDice(pick(["¡Sabia decisión! Los elfos te lo agradecen.","¡Eso! Mi billetera respira tranquila."])); }}]);
+  $("ovBody").prepend(mini);
+}
+
+/* Reacciones */
+let ultimoNombre="";
+function reaccionNombre(){
+  const n=$("nombre").value.trim().split(/\s+/)[0];
+  if(!n || n===ultimoNombre) return; ultimoNombre=n;
+  santaDice(pick([`¡Jo, jo, jo! Hola, ${n}. Ya te encontré en mi lista.`,`¡${n}! Qué bonito nombre. Los elfos ya lo están escribiendo.`,`Hola, ${n}. Rodolfo… digo, los renos te mandan saludos.`]));
+}
+function reaccionRegalo(name, lujo){
+  if(lujo) return;
+  const c=wishes.length, n=norm(name);
+  if(n.includes("sorprend")) return santaDice("¡Me encantan las sorpresas! Déjamelo a mí.");
+  if(c===1) return santaDice(pick(["¡Anotado! Buena elección.","¡Excelente! Los elfos ya están buscando eso.","¡Uh, me gusta!"]));
+  if(c===4) return santaDice("Vas a necesitar que traiga un trineo más grande.");
+  if(c===6) return santaDice("Mis renos ya están sudando… ¿no será mucho?");
+  if(c>=8) return santaDice("¡Ya no me cabe nada más en el costal!");
+}
+function reaccionPorque(){
+  const t=norm($("porque").value.trim()); if(!t) return;
+  if(/^porque si\b|^por que si\b|^porque quiero\b/.test(t)) return santaDice("“Porque sí” no convence a los renos. ¡Cuéntame más!");
+  if(t.length<18) return santaDice("¿Solo eso? Convénceme un poquito más.");
+  if(t.length>120) return santaDice("¡Qué buenas razones! Los elfos están conmovidos.");
+  santaDice("Mmm… buenos argumentos. Lo voy a tener en cuenta.");
+}
+function reaccionBien(){
+  if($("bien").checked){
+    santaDice("Déjame revisar mi lista…", 1800);
+    setTimeout(()=>{ if($("bien").checked) santaDice(Math.random()<.25 ? "Hay un día de marzo que no me cuadra… pero te lo dejo pasar." : "Verificado: ¡sí te portaste bien!"); }, 1900);
+  } else santaDice("¿Seguro? Todavía estás a tiempo de portarte bien.");
+}
+const CHISTES=["¿Por qué Papá Noel no usa Waze? Porque los renos ya se saben el camino.","¿Qué le dice un reno a otro? ¡Nos vemos en Navidad, venado!","Los elfos me pidieron vacaciones… en diciembre. ¡Jo, jo, no!","Mi dieta empieza el 26 de diciembre. Como todos los años.","Tengo 1.700 años y todavía no aprendo a usar el celular.","Toca otra vez y te cuento otro."];
+let chiste=0;
+
+/* Medidor */
+function medidor(){
+  const d=data(); let p=0;
+  if(d.nombre) p+=20; if(wishes.length) p+=25;
+  p+=Math.min(25, Math.round(d.porque.length/40*25));
+  if(d.bien) p+=15; if(d.mensaje) p+=15;
+  $("meterBar").style.width=p+"%";
+  $("meterTxt").textContent = p<30?"Modo Grinch": p<70?"Calentando motores": p<100?"¡Muy navideño!":"¡Al máximo!";
+}
+
+/* Celebración */
+function celebrar(){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const cols=["#c0263b","#e3b04b","#fbf6ea","#4fae7b","#3b82c4"];
+  for(let i=0;i<70;i++){ const c=document.createElement("i"); c.className="confeti";
+    c.style.left=Math.random()*100+"vw"; c.style.background=pick(cols);
+    c.style.animationDuration=(1.8+Math.random()*1.8)+"s"; c.style.animationDelay=(Math.random()*.5)+"s";
+    document.body.appendChild(c); setTimeout(()=>c.remove(),4500); }
+  const sl=document.querySelector(".sleigh"); if(sl){ sl.classList.remove("rush"); void sl.offsetWidth; sl.classList.add("rush"); setTimeout(()=>sl.classList.remove("rush"),2300); window.scrollTo({top:0,behavior:"smooth"}); }
+}
+
 function renderChips(){
   const names = wishes.map(w=>w.name.toLowerCase());
   $("chips").innerHTML = IDEAS.map(i=>`<button type="button" class="chip" aria-pressed="${names.includes(i.toLowerCase())}" data-i="${esc(i)}">${esc(i)}</button>`).join("");
 }
 function addWish(name){
   name = name.trim(); if(!name) return;
-  if(wishes.some(w=>w.name.toLowerCase()===name.toLowerCase())) return;
-  wishes.push({name, top: wishes.length===0});
-  render();
+  if(wishes.some(w=>w.name.toLowerCase()===name.toLowerCase())){ santaDice("Ese ya lo tengo anotado."); return; }
+  const m = esLujo(name);
+  if(m) return pedirConfirmacion(name, m);
+  agregar(name,false);
+}
+function agregar(name, lujo){
+  wishes.push({name, top: wishes.length===0, lujo});
+  render(); reaccionRegalo(name, lujo);
 }
 function removeWish(i){
   const wasTop = wishes[i].top; wishes.splice(i,1);
@@ -319,7 +439,7 @@ function renderWishes(){
   $("wishes").innerHTML = sorted.map(w=>`
     <li class="wish ${w.top?"top":""}">
       <button type="button" class="star" data-top="${w.i}" aria-label="Marcar ${esc(w.name)} como el que más quiero" title="El que más quiero">${w.top?"★":"☆"}</button>
-      <span class="name">${esc(w.name)}<span class="tag">${w.top?"El que más quiero":"También me gustaría"}</span></span>
+      <span class="name">${esc(w.name)}<span class="tag ${w.lujo?"lujo":""}">${w.top?"El que más quiero":"También me gustaría"}${w.lujo?" · regalo de lujo":""}</span></span>
       <button type="button" class="del" data-del="${w.i}" aria-label="Quitar ${esc(w.name)}">✕</button>
     </li>`).join("");
 }
@@ -330,7 +450,8 @@ function data(){
     correo:$("correo").value.trim(), porque:$("porque").value.trim(), bien:$("bien").checked,
     mensaje:$("mensaje").value.trim(),
     principal:(wishes.find(w=>w.top)||{}).name||"",
-    otros:wishes.filter(w=>!w.top).map(w=>w.name)
+    otros:wishes.filter(w=>!w.top).map(w=>w.name),
+    lujo:wishes.filter(w=>w.lujo).map(w=>w.name)
   };
 }
 function fecha(){ return new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"}); }
@@ -348,7 +469,7 @@ function renderLetter(){
   h += `<p class="sign">Con cariño,<br>${d.nombre?esc(d.nombre):ph("(tu nombre)")}</p>`;
   $("cartaBody").innerHTML = h;
 }
-function render(){ renderChips(); renderWishes(); renderLetter(); }
+function render(){ renderChips(); renderWishes(); renderLetter(); medidor(); }
 
 function textoCarta(d){
   const L = [];
@@ -360,6 +481,7 @@ function textoCarta(d){
   L.push("");
   L.push(`★ Regalo principal: ${d.principal}`);
   if(d.otros.length) L.push(`También le gustaría: ${d.otros.join(", ")}`);
+  if(d.lujo.length) L.push(`Regalos de lujo (confirmó): ${d.lujo.join(", ")}`);
   L.push("");
   L.push(`¿Por qué lo quiere?`);
   L.push(d.porque);
@@ -396,30 +518,31 @@ async function enviar(e){
   const btn = $("enviar"); btn.disabled = true; btn.textContent = "Enviando…";
   const asunto = `${ASUNTO} — ${d.nombre}`;
   const cuerpo = textoCarta(d);
-  let ok = false;
+  let ok = false, motivo = "";
   try{
-    const r = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(CORREO_DESTINO)}`,{
+    const r = await fetch(`https://formsubmit.co/ajax/${FORM_ID}`,{
       method:"POST", headers:{"Content-Type":"application/json","Accept":"application/json"},
       body:JSON.stringify({
-        _subject:asunto, _template:"table", _captcha:"false", ...(d.correo?{_replyto:d.correo}:{}),
+        _subject:asunto, _template:"table", _captcha:"false", ...(COPIA_A?{_cc:COPIA_A}:{}), ...(d.correo?{_replyto:d.correo}:{}),
         "Nombre":d.nombre, "Correo":d.correo||"-",
         "Regalo principal":d.principal, "También le gustaría":d.otros.join(", ")||"-",
-        "Por qué lo quiere":d.porque, "Se portó bien":d.bien?"Sí":"No marcó", "Mensaje":d.mensaje||"-"
+        "Por qué lo quiere":d.porque, "Regalos de lujo (confirmó que sí los quiere)":d.lujo.join(", ")||"-", "Se portó bien":d.bien?"Sí":"No marcó", "Mensaje":d.mensaje||"-"
       })
     });
     const j = await r.json().catch(()=>({}));
     ok = r.ok && (j.success===true || j.success==="true");
-  }catch(_){ ok = false; }
+    motivo = j.message || (r.ok ? "" : "HTTP "+r.status);
+  }catch(err){ ok = false; motivo = "Sin conexión con el servicio de envío (puede ser un bloqueador de anuncios o falta de internet)."; }
   btn.disabled = false; btn.textContent = "Enviar mi carta ✉";
 
   if(ok){
-    abrir("¡Carta enviada!", `<p>Gracias, ${esc(d.nombre)}. Tu carta ya va en camino. La vamos a leer con mucho cariño y te contaremos pronto.</p>`,
+    celebrar();
+    abrir("¡Carta enviada!", `<p>Gracias, ${esc(d.nombre)}. Tu carta ya va en el trineo rumbo al Polo Norte. La vamos a leer con mucho cariño y te contaremos pronto.</p>`,
       [{t:"Escribir otra carta", main:true, fn:()=>{ cerrar(); reset(); }}]);
   } else {
-    const mailto = `mailto:${CORREO_DESTINO}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
-    abrir("Un paso más", `<p>No pudimos enviarla automáticamente desde aquí. Ábrela en tu correo y dale <b>Enviar</b>, o copia la carta y mándala a:</p><p><code>${esc(CORREO_DESTINO)}</code></p>`,
-      [{t:"Abrir en mi correo", main:true, href:mailto},
-       {t:"Copiar carta", fn:async(ev)=>{ try{ await navigator.clipboard.writeText(`Para: ${CORREO_DESTINO}\nAsunto: ${asunto}\n\n${cuerpo}`); ev.target.textContent="¡Copiada!"; }catch(_){ ev.target.textContent="No se pudo copiar"; } }},
+    abrir("No se pudo enviar", `<p>Tu carta no alcanzó a salir. Revisa tu conexión a internet y vuelve a intentarlo. Si tienes un bloqueador de anuncios, desactívalo para esta página.</p><p>También puedes copiar la carta y enviársela por WhatsApp a quien te compartió este enlace.</p>${motivo?`<p style="font-size:.8rem;color:#7a6b62;margin-top:6px">Detalle: ${esc(motivo)}</p>`:""}`,
+      [{t:"Intentar de nuevo", main:true, fn:()=>{ cerrar(); $("f").requestSubmit(); }},
+       {t:"Copiar carta", fn:async(ev)=>{ try{ await navigator.clipboard.writeText(`${asunto}\n\n${cuerpo}`); ev.target.textContent="¡Copiada!"; }catch(_){ ev.target.textContent="No se pudo copiar"; } }},
        {t:"Volver", fn:cerrar}]);
   }
 }
@@ -433,7 +556,15 @@ $("agregar").addEventListener("click", ()=>{ addWish($("nuevo").value); $("nuevo
 $("nuevo").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); $("agregar").click(); } });
 $("wishes").addEventListener("click", e=>{ const t=e.target.closest("[data-top]"), d=e.target.closest("[data-del]");
   if(t) setTop(+t.dataset.top); if(d) removeWish(+d.dataset.del); });
-["nombre","porque","mensaje","bien"].forEach(id=>$(id).addEventListener("input",renderLetter));
+["nombre","porque","mensaje","bien"].forEach(id=>$(id).addEventListener("input",()=>{renderLetter();medidor();}));
+$("nombre").addEventListener("change",reaccionNombre);
+$("porque").addEventListener("change",reaccionPorque);
+$("bien").addEventListener("change",reaccionBien);
+function tocarSanta(){ santaDice(CHISTES[chiste++ % CHISTES.length], 5500); }
+$("santa").addEventListener("click",tocarSanta);
+$("santa").addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); tocarSanta(); }});
+$("reno").addEventListener("click",()=>{ const r=$("reno"); r.classList.remove("jump"); void r.getBoundingClientRect(); r.classList.add("jump"); santaDice(pick(["¡Prrr! (eso es “hola” en idioma reno)","El reno dice que tu carta le gusta.","¡Cuidado! Ese reno es cosquilloso."])); });
+setTimeout(()=>santaDice("¡Jo, jo, jo! Escribe tu nombre y cuéntame qué quieres. Tócame si quieres un chiste.", 6000), 1200);
 $("f").addEventListener("submit", enviar);
 $("ov").addEventListener("click", e=>{ if(e.target===$("ov")) cerrar(); });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") cerrar(); });
