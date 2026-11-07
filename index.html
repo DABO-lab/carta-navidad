@@ -311,6 +311,7 @@ header{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 /* ====== CONFIGURACIÓN ======
    Correo que recibe las cartas. */
@@ -510,6 +511,18 @@ function abrir(titulo, html, acciones){
 }
 function cerrar(){ $("ov").classList.remove("open"); }
 
+
+/* Foto de la carta (PNG) */
+async function fotoCarta(){
+  if(typeof html2canvas!=="function") return null;
+  try{ await document.fonts.ready; }catch(_){}
+  const c = await html2canvas($("carta"),{scale:2,backgroundColor:"#fbf6ea",logging:false,useCORS:true,
+    onclone:doc=>{ const a=doc.getElementById("carta"); a.style.borderRadius="0"; a.style.boxShadow="none";
+      const f=doc.createElement("div"); f.style.cssText="position:absolute;top:0;left:0;right:0;height:10px;display:flex";
+      ["#c0263b","#fbf6ea","#2f6b4f","#fbf6ea","#c0263b","#fbf6ea","#2f6b4f","#fbf6ea","#c0263b","#fbf6ea","#2f6b4f"].forEach(c=>{const i=doc.createElement("i");i.style.cssText="flex:1;background:"+c;f.appendChild(i);});
+      a.appendChild(f); }});
+  return await new Promise(res=>c.toBlob(res,"image/png"));
+}
 async function enviar(e){
   e.preventDefault();
   const d = data(); const v = validar(d);
@@ -519,20 +532,31 @@ async function enviar(e){
   const asunto = `${ASUNTO} — ${d.nombre}`;
   const cuerpo = textoCarta(d);
   let ok = false, motivo = "";
+  const campos = {
+    _subject:asunto, _template:"table", _captcha:"false", ...(COPIA_A?{_cc:COPIA_A}:{}), ...(d.correo?{_replyto:d.correo}:{}),
+    "Nombre":d.nombre, "Correo":d.correo||"-",
+    "Regalo principal":d.principal, "También le gustaría":d.otros.join(", ")||"-",
+    "Por qué lo quiere":d.porque, "Regalos de lujo (confirmó que sí los quiere)":d.lujo.join(", ")||"-",
+    "Se portó bien":d.bien?"Sí":"No marcó", "Mensaje":d.mensaje||"-"
+  };
+  const URL_ENVIO = `https://formsubmit.co/ajax/${FORM_ID}`;
+  const exito = async r => { const j = await r.json().catch(()=>({})); motivo = j.message || (r.ok?"":"HTTP "+r.status); return r.ok && (j.success===true || j.success==="true"); };
+  // 1) Con la imagen de la carta adjunta
   try{
-    const r = await fetch(`https://formsubmit.co/ajax/${FORM_ID}`,{
-      method:"POST", headers:{"Content-Type":"application/json","Accept":"application/json"},
-      body:JSON.stringify({
-        _subject:asunto, _template:"table", _captcha:"false", ...(COPIA_A?{_cc:COPIA_A}:{}), ...(d.correo?{_replyto:d.correo}:{}),
-        "Nombre":d.nombre, "Correo":d.correo||"-",
-        "Regalo principal":d.principal, "También le gustaría":d.otros.join(", ")||"-",
-        "Por qué lo quiere":d.porque, "Regalos de lujo (confirmó que sí los quiere)":d.lujo.join(", ")||"-", "Se portó bien":d.bien?"Sí":"No marcó", "Mensaje":d.mensaje||"-"
-      })
-    });
-    const j = await r.json().catch(()=>({}));
-    ok = r.ok && (j.success===true || j.success==="true");
-    motivo = j.message || (r.ok ? "" : "HTTP "+r.status);
-  }catch(err){ ok = false; motivo = "Sin conexión con el servicio de envío (puede ser un bloqueador de anuncios o falta de internet)."; }
+    const png = await fotoCarta();
+    if(png){
+      const fd = new FormData();
+      Object.entries(campos).forEach(([k,v])=>fd.append(k,v));
+      fd.append("attachment", png, `carta-${d.nombre.replace(/[^\wáéíóúñü ]/gi,"").trim().replace(/\s+/g,"-")||"navidad"}.png`);
+      ok = await exito(await fetch(URL_ENVIO,{method:"POST",headers:{"Accept":"application/json"},body:fd}));
+    }
+  }catch(_){ ok = false; }
+  // 2) Respaldo: sin imagen
+  if(!ok){
+    try{
+      ok = await exito(await fetch(URL_ENVIO,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(campos)}));
+    }catch(err){ ok = false; motivo = "Sin conexión con el servicio de envío (puede ser un bloqueador de anuncios o falta de internet)."; }
+  }
   btn.disabled = false; btn.textContent = "Enviar mi carta ✉";
 
   if(ok){
