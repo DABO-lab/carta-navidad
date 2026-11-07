@@ -146,6 +146,13 @@ header{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
 @keyframes rush{from{transform:translate(-110%,30px)}to{transform:translate(260%,-40px)}}
 .dialog .santa-mini{width:64px;justify-self:start}
 @media (prefers-reduced-motion:reduce){#snow{display:none}.toast{transition:none}.confeti{display:none}}
+
+/* Modo ver carta */
+.ver-acciones{display:none;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:44px}
+body.modo-ver form,body.modo-ver header p,body.modo-ver .letter-note,body.modo-ver .toast,body.modo-ver .meter{display:none!important}
+body.modo-ver .grid{grid-template-columns:minmax(0,560px);justify-content:center}
+body.modo-ver .letter-col{position:static}
+body.modo-ver .ver-acciones{display:flex}
 </style>
 </head>
 <body>
@@ -288,6 +295,7 @@ header{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
   <circle cx="70" cy="148" r="5" fill="#e3b04b"/>
 </svg>
       </div>
+      <div class="ver-acciones"><button type="button" class="btn btn-main" id="descargar">Descargar imagen</button><a class="btn btn-ghost" id="propia" style="text-decoration:none" href="./">Escribir otra carta</a></div>
       <p class="letter-note">Así se verá tu carta. Se actualiza mientras escribes.</p>
     </div>
   </div>
@@ -455,7 +463,8 @@ function data(){
     lujo:wishes.filter(w=>w.lujo).map(w=>w.name)
   };
 }
-function fecha(){ return new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"}); }
+let FECHA_FIJA=null;
+function fecha(){ if(FECHA_FIJA) return FECHA_FIJA; return new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"}); }
 
 function renderLetter(){
   const d = data(); const ph = (t)=>`<span class="muted">${t}</span>`;
@@ -523,6 +532,32 @@ async function fotoCarta(){
       a.appendChild(f); }});
   return await new Promise(res=>c.toBlob(res,"image/png"));
 }
+
+/* Enlace para ver la carta */
+function b64e(o){ const b=new TextEncoder().encode(JSON.stringify(o)); let t=""; b.forEach(x=>t+=String.fromCharCode(x)); return btoa(t).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+function b64d(t){ t=t.replace(/-/g,"+").replace(/_/g,"/"); const r=atob(t); return JSON.parse(new TextDecoder().decode(Uint8Array.from(r,c=>c.charCodeAt(0)))); }
+function enlaceCarta(d){
+  const o={n:d.nombre,w:wishes.map(x=>[x.name,x.top?1:0,x.lujo?1:0]),p:d.porque,b:d.bien?1:0,m:d.mensaje,f:fecha()};
+  return location.origin+location.pathname+"?ver="+b64e(o);
+}
+function modoVer(){
+  const v=new URLSearchParams(location.search).get("ver"); if(!v) return false;
+  try{
+    const o=b64d(v);
+    $("nombre").value=o.n||""; $("porque").value=o.p||""; $("bien").checked=!!o.b; $("mensaje").value=o.m||"";
+    wishes=(o.w||[]).map(x=>({name:x[0],top:!!x[1],lujo:!!x[2]})); FECHA_FIJA=o.f||null;
+    document.body.classList.add("modo-ver"); document.querySelector("header h1").innerHTML="La carta de <span>"+esc((o.n||"").split(/\s+/)[0])+"</span>";
+    document.title="Carta de "+(o.n||"Navidad"); render(); return true;
+  }catch(_){ return false; }
+}
+async function descargar(){
+  const btn=$("descargar"); btn.textContent="Generando…";
+  try{
+    const png=await fotoCarta(); const a=document.createElement("a");
+    a.href=URL.createObjectURL(png); a.download="carta-"+($("nombre").value.trim().replace(/\s+/g,"-")||"navidad")+".png";
+    document.body.appendChild(a); a.click(); a.remove(); btn.textContent="Descargar imagen";
+  }catch(_){ btn.textContent="No se pudo generar"; }
+}
 async function enviar(e){
   e.preventDefault();
   const d = data(); const v = validar(d);
@@ -537,22 +572,12 @@ async function enviar(e){
     "Nombre":d.nombre, "Correo":d.correo||"-",
     "Regalo principal":d.principal, "También le gustaría":d.otros.join(", ")||"-",
     "Por qué lo quiere":d.porque, "Regalos de lujo (confirmó que sí los quiere)":d.lujo.join(", ")||"-",
-    "Se portó bien":d.bien?"Sí":"No marcó", "Mensaje":d.mensaje||"-"
+    "Se portó bien":d.bien?"Sí":"No marcó", "Mensaje":d.mensaje||"-",
+    "Ver la carta (con imagen)": enlaceCarta(d)
   };
   const URL_ENVIO = `https://formsubmit.co/ajax/${FORM_ID}`;
   const exito = async r => { const j = await r.json().catch(()=>({})); motivo = j.message || (r.ok?"":"HTTP "+r.status); return r.ok && (j.success===true || j.success==="true"); };
-  // 1) Con la imagen de la carta adjunta
-  try{
-    const png = await fotoCarta();
-    if(png){
-      const fd = new FormData();
-      Object.entries(campos).forEach(([k,v])=>fd.append(k,v));
-      fd.append("attachment", png, `carta-${d.nombre.replace(/[^\wáéíóúñü ]/gi,"").trim().replace(/\s+/g,"-")||"navidad"}.png`);
-      ok = await exito(await fetch(URL_ENVIO,{method:"POST",headers:{"Accept":"application/json"},body:fd}));
-    }
-  }catch(_){ ok = false; }
-  // 2) Respaldo: sin imagen
-  if(!ok){
+  {
     try{
       ok = await exito(await fetch(URL_ENVIO,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(campos)}));
     }catch(err){ ok = false; motivo = "Sin conexión con el servicio de envío (puede ser un bloqueador de anuncios o falta de internet)."; }
@@ -588,7 +613,8 @@ function tocarSanta(){ santaDice(CHISTES[chiste++ % CHISTES.length], 5500); }
 $("santa").addEventListener("click",tocarSanta);
 $("santa").addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); tocarSanta(); }});
 $("reno").addEventListener("click",()=>{ const r=$("reno"); r.classList.remove("jump"); void r.getBoundingClientRect(); r.classList.add("jump"); santaDice(pick(["¡Prrr! (eso es “hola” en idioma reno)","El reno dice que tu carta le gusta.","¡Cuidado! Ese reno es cosquilloso."])); });
-setTimeout(()=>santaDice("¡Jo, jo, jo! Escribe tu nombre y cuéntame qué quieres. Tócame si quieres un chiste.", 6000), 1200);
+$("descargar").addEventListener("click",descargar);
+if(!modoVer()) setTimeout(()=>santaDice("¡Jo, jo, jo! Escribe tu nombre y cuéntame qué quieres. Tócame si quieres un chiste.", 6000), 1200);
 $("f").addEventListener("submit", enviar);
 $("ov").addEventListener("click", e=>{ if(e.target===$("ov")) cerrar(); });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") cerrar(); });
